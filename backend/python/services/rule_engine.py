@@ -1,39 +1,57 @@
 import json
+import os
+import logging
 from typing import List, Dict
 from datetime import datetime
 import sqlite3
-from database.db import get_connection
+from database.db import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 class RuleEngine:
     def __init__(self):
+        # BUGFIX: Add safe numeric comparison functions that handle type conversion errors
+        def safe_gt(a, b):
+            try:
+                return float(a) > float(b)
+            except (ValueError, TypeError):
+                return False
+
+        def safe_lt(a, b):
+            try:
+                return float(a) < float(b)
+            except (ValueError, TypeError):
+                return False
+
         self.condition_operators = {
             'equals': lambda a, b: str(a) == str(b),
             'contains': lambda a, b: b in str(a),
             'startswith': lambda a, b: str(a).startswith(str(b)),
             'endswith': lambda a, b: str(a).endswith(str(b)),
-            'gt': lambda a, b: float(a) > float(b),
-            'lt': lambda a, b: float(a) < float(b),
+            'gt': safe_gt,
+            'lt': safe_lt,
             'in': lambda a, b: str(a) in str(b).split(','),
         }
 
     def load_rules(self) -> List[Dict]:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM rules WHERE enabled = 1')
+        # BUGFIX: Use context manager to prevent connection leaks
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT * FROM rules WHERE enabled = 1')
 
-        rules = []
-        for row in cursor.fetchall():
-            try:
-                rules.append({
-                    'id': row[0],
-                    'name': row[1],
-                    'conditions': json.loads(row[2]) if row[2] else [],
-                    'actions': json.loads(row[3]) if row[3] else {},
-                })
-            except json.JSONDecodeError:
-                continue
+            rules = []
+            for row in cursor.fetchall():
+                try:
+                    rules.append({
+                        'id': row[0],
+                        'name': row[1],
+                        'conditions': json.loads(row[2]) if row[2] else [],
+                        'actions': json.loads(row[3]) if row[3] else {},
+                    })
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse rule {row[0]}: {e}")
+                    continue
 
-        conn.close()
         return rules
 
     def evaluate_condition(self, file_info: Dict, condition: Dict) -> bool:
@@ -46,7 +64,8 @@ class RuleEngine:
         if operator in self.condition_operators:
             try:
                 return self.condition_operators[operator](file_value, value)
-            except:
+            except (ValueError, TypeError, AttributeError) as e:
+                logger.debug(f"Condition evaluation error: {e}")
                 return False
 
         return False
@@ -74,7 +93,7 @@ class RuleEngine:
         dest = dest.replace('{month}', datetime.now().strftime('%m'))
         dest = dest.replace('{category}', file_info.get('category', 'Other'))
 
-        import os
+        # BUGFIX: Import moved to top of file
         return os.path.join(base_path, dest)
 
     def generate_organization_plan(self, folder_path: str, files: List[Dict]) -> Dict:

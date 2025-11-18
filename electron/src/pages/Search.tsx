@@ -85,7 +85,7 @@ export default function Search() {
               <div className="space-y-2">
                 {results.map((file, idx) => (
                   <div
-                    key={idx}
+                    key={file.id || file.path || idx}
                     className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors"
                   >
                     <File className="h-8 w-8 text-blue-500" />

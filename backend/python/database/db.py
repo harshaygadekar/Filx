@@ -1,15 +1,46 @@
 import sqlite3
+import logging
 from pathlib import Path
+from contextlib import contextmanager
 from config import settings
 
+logger = logging.getLogger(__name__)
 DB_PATH = settings.db_path
 
 def get_connection():
+    """Get a database connection. Prefer using get_db_connection() context manager."""
     return sqlite3.connect(DB_PATH)
 
+@contextmanager
+def get_db_connection():
+    """
+    Context manager for database connections.
+    Automatically handles connection cleanup and error rollback.
+
+    Usage:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(...)
+            conn.commit()
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        yield conn
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Database error: {e}")
+        raise
+    finally:
+        if conn:
+            conn.close()
+
 def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
+    # BUGFIX: Use context manager to ensure connection is closed
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS files (
@@ -115,15 +146,17 @@ def init_db():
     )
     ''')
 
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_extension ON files(extension)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_tags_file ON file_tags(file_id)')
-    cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_extension ON files(extension)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_hash ON files(hash)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_tags_file ON file_tags(file_id)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_file_tags_tag ON file_tags(tag_id)')
 
-    conn.commit()
-    conn.close()
-    print(f"Database initialized at {DB_PATH}")
+        # Additional indexes for common query patterns
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_mime_type ON files(mime_type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_size ON files(size)')
+
+    logger.info(f"Database initialized at {DB_PATH}")
 
 if __name__ == "__main__":
     init_db()
