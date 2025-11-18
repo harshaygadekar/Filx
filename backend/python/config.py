@@ -14,4 +14,5 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-settings.db_path.parent.mkdir(exist_ok=True)
+# BUGFIX: Add parents=True to create intermediate directories
+settings.db_path.parent.mkdir(parents=True, exist_ok=True)

@@ -52,7 +52,9 @@ export const tagsApi = {
   },
 
   async untagFile(fileId: number, tagId: number) {
-    return api.delete('/tags/file', { params: { file_id: fileId, tag_id: tagId } });
+    // BUGFIX: Use URL query string directly instead of params for DELETE requests
+    // Some HTTP clients have issues with DELETE + params
+    return api.delete(`/tags/file?file_id=${fileId}&tag_id=${tagId}`);
   },
 
   async getFileTags(fileId: number) {

@@ -1,11 +1,14 @@
 import os
 import hashlib
+import logging
 from pathlib import Path
 from datetime import datetime
 from mimetypes import guess_type
 from typing import List, Dict, Optional
 import sqlite3
-from database.db import get_connection
+from database.db import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 class FileScanner:
     def __init__(self, max_workers: int = 4):
@@ -56,46 +59,47 @@ class FileScanner:
                         files.append(file_info)
 
         except Exception as e:
-            print(f"Error scanning folder: {e}")
+            logger.error(f"Error scanning folder: {e}")
 
         return files
 
     def save_files_to_db(self, files: List[Dict]) -> int:
-        conn = get_connection()
-        cursor = conn.cursor()
         saved_count = 0
 
-        for file_info in files:
-            try:
-                cursor.execute('''
-                INSERT OR REPLACE INTO files
-                (path, filename, extension, size, created, modified, mime_type, hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    file_info['path'],
-                    file_info['filename'],
-                    file_info['extension'],
-                    file_info['size'],
-                    file_info['created'],
-                    file_info['modified'],
-                    file_info['mime_type'],
-                    file_info['hash'],
-                ))
-                saved_count += 1
-            except sqlite3.IntegrityError:
-                cursor.execute('''
-                UPDATE files SET
-                modified = ?, size = ?, hash = ?
-                WHERE path = ?
-                ''', (
-                    file_info['modified'],
-                    file_info['size'],
-                    file_info['hash'],
-                    file_info['path'],
-                ))
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                for file_info in files:
+                    try:
+                        cursor.execute('''
+                        INSERT OR REPLACE INTO files
+                        (path, filename, extension, size, created, modified, mime_type, hash)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            file_info['path'],
+                            file_info['filename'],
+                            file_info['extension'],
+                            file_info['size'],
+                            file_info['created'],
+                            file_info['modified'],
+                            file_info['mime_type'],
+                            file_info['hash'],
+                        ))
+                        saved_count += 1
+                    except sqlite3.IntegrityError:
+                        cursor.execute('''
+                        UPDATE files SET
+                        modified = ?, size = ?, hash = ?
+                        WHERE path = ?
+                        ''', (
+                            file_info['modified'],
+                            file_info['size'],
+                            file_info['hash'],
+                            file_info['path'],
+                        ))
+        except Exception as e:
+            logger.error(f"Error saving files to database: {e}")
 
-        conn.commit()
-        conn.close()
         return saved_count
 
 scanner = FileScanner()

@@ -24,7 +24,9 @@ export default function Organizer() {
       const files = e.target.files
       if (files.length > 0) {
         const path = files[0].path
-        const folderPath = path.substring(0, path.lastIndexOf('/') || path.lastIndexOf('\\'))
+        // BUGFIX: Use Math.max to handle both forward and backward slashes correctly
+        const lastSlashIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+        const folderPath = lastSlashIndex >= 0 ? path.substring(0, lastSlashIndex) : path
         setSelectedFolder(folderPath)
       }
     }
